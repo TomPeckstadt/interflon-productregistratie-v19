@@ -1704,6 +1704,32 @@ export default function ProductRegistrationApp() {
     }
   }
 
+  const savePurpose = async (purposeName: string) => {
+    if (!supabase) {
+      console.log("📱 No Supabase - using mock save for purpose")
+      return { data: purposeName, error: null }
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("purposes")
+        .insert([{ name: purposeName }])
+        .select()
+        .single()
+
+      if (error) {
+        console.error("❌ Error saving purpose:", error)
+        return { data: null, error }
+      }
+
+      console.log("✅ Purpose saved successfully:", data)
+      return { data, error: null }
+    } catch (error) {
+      console.error("❌ Exception saving purpose:", error)
+      return { data: null, error }
+    }
+  }
+
   // Remove functions
   const removeUser = async (userToRemove: string) => {
     const result = await deleteUser(userToRemove)
@@ -2410,6 +2436,862 @@ export default function ProductRegistrationApp() {
             </Card>
           </TabsContent>
 
+          {getCurrentUserRole() === "admin" && (
+            <>
+              <TabsContent value="history">
+                <Card className="shadow-sm">
+                  <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                    <CardTitle className="flex items-center gap-2 text-xl">📊 Registratie Geschiedenis</CardTitle>
+                    <CardDescription>Bekijk alle product registraties en filter op verschillende criteria</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-4 mb-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                          <Label>🔍 Zoeken</Label>
+                          <Input
+                            placeholder="Zoek in alle velden..."
+                            value={historySearchQuery}
+                            onChange={(e) => setHistorySearchQuery(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>👤 Gebruiker</Label>
+                          <Select value={selectedHistoryUser} onValueChange={setSelectedHistoryUser}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Alle gebruikers</SelectItem>
+                              {users.map((user) => (
+                                <SelectItem key={user.name} value={user.name}>
+                                  {user.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>📍 Locatie</Label>
+                          <Select value={selectedHistoryLocation} onValueChange={setSelectedHistoryLocation}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Alle locaties</SelectItem>
+                              {locations.map((location) => (
+                                <SelectItem key={location} value={location}>
+                                  {location}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>📅 Sorteren</Label>
+                          <Select value={`${sortBy}-${sortOrder}`} onValueChange={(value) => {
+                            const [newSortBy, newSortOrder] = value.split('-')
+                            setSortBy(newSortBy)
+                            setSortOrder(newSortOrder)
+                          }}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="date-newest">Nieuwste eerst</SelectItem>
+                              <SelectItem value="date-oldest">Oudste eerst</SelectItem>
+                              <SelectItem value="user-newest">Gebruiker A-Z</SelectItem>
+                              <SelectItem value="product-newest">Product A-Z</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>📅 Van datum</Label>
+                          <Input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>📅 Tot datum</Label>
+                          <Input
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50 border-b">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Datum/Tijd</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gebruiker</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Locatie</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Doel</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">QR Code</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {getFilteredAndSortedRegistrations().map((registration) => (
+                              <tr key={registration.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm">
+                                  <div>{registration.date}</div>
+                                  <div className="text-gray-500">{registration.time}</div>
+                                </td>
+                                <td className="px-4 py-3 text-sm font-medium">{registration.user}</td>
+                                <td className="px-4 py-3 text-sm">{registration.product}</td>
+                                <td className="px-4 py-3 text-sm">{registration.location}</td>
+                                <td className="px-4 py-3 text-sm">{registration.purpose}</td>
+                                <td className="px-4 py-3 text-sm font-mono text-gray-600">
+                                  {registration.qrcode || '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {getFilteredAndSortedRegistrations().length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                          Geen registraties gevonden met de huidige filters
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="users">
+                <Card className="shadow-sm">
+                  <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+                    <CardTitle className="flex items-center gap-2 text-xl">👥 Gebruikers Beheer</CardTitle>
+                    <CardDescription>Beheer gebruikers, rollen en badge codes</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">👤 Nieuwe Gebruiker Toevoegen</h3>
+                          <div className="grid grid-cols-1 gap-4">
+                            <div className="space-y-2">
+                              <Label>Naam</Label>
+                              <Input
+                                placeholder="Volledige naam"
+                                value={newUserName}
+                                onChange={(e) => setNewUserName(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Email</Label>
+                              <Input
+                                type="email"
+                                placeholder="naam@dematic.com"
+                                value={newUserEmail}
+                                onChange={(e) => setNewUserEmail(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Wachtwoord</Label>
+                              <Input
+                                type="password"
+                                placeholder="Minimaal 6 tekens"
+                                value={newUserPassword}
+                                onChange={(e) => setNewUserPassword(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Rol</Label>
+                              <Select value={newUserLevel} onValueChange={setNewUserLevel}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="user">Gebruiker</SelectItem>
+                                  <SelectItem value="admin">Administrator</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Badge Code (optioneel)</Label>
+                              <Input
+                                placeholder="BADGE001"
+                                value={newUserBadgeCode}
+                                onChange={(e) => setNewUserBadgeCode(e.target.value)}
+                              />
+                            </div>
+                            <Button onClick={addNewUserWithAuth} disabled={isLoading} className="w-full">
+                              {isLoading ? "Bezig..." : "👤 Gebruiker Toevoegen"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">📤 Import/Export</h3>
+                          <div className="space-y-3">
+                            <Button onClick={downloadUserTemplate} className="w-full bg-transparent" variant="outline">
+                              📄 Download Template
+                            </Button>
+                            <div className="relative">
+                              <input
+                                type="file"
+                                accept=".xlsx,.xls"
+                                onChange={handleImportUsersExcel}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                              <Button className="w-full bg-transparent" variant="outline">
+                                📥 Import Excel
+                              </Button>
+                            </div>
+                            <Button onClick={handleExportUsersExcel} className="w-full bg-transparent" variant="outline">
+                              📤 Export Excel
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold">Bestaande Gebruikers</h3>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder="Zoek gebruikers..."
+                              value={userSearchQuery}
+                              onChange={(e) => setUserSearchQuery(e.target.value)}
+                              className="w-64"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead className="bg-gray-50 border-b">
+                                <tr>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Naam</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rol</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Badge Code</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acties</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {getFilteredAndSortedUsers().map((user) => (
+                                  <tr key={user.name} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 text-sm font-medium">{user.name}</td>
+                                    <td className="px-4 py-3 text-sm">
+                                      <span className={`px-2 py-1 rounded-full text-xs ${
+                                        user.role === 'admin' 
+                                          ? 'bg-red-100 text-red-800' 
+                                          : 'bg-blue-100 text-blue-800'
+                                      }`}>
+                                        {user.role === 'admin' ? '👑 Admin' : '👤 User'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm font-mono">
+                                      {user.badgeCode || '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleEditUser(user.name)}
+                                        >
+                                          ✏️ Bewerken
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            if (confirm(`Weet je zeker dat je ${user.name} wilt verwijderen?`)) {
+                                              removeUser(user.name)
+                                            }
+                                          }}
+                                          className="text-red-600 hover:text-red-700"
+                                        >
+                                          🗑️ Verwijderen
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="products">
+                <Card className="shadow-sm">
+                  <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b">
+                    <CardTitle className="flex items-center gap-2 text-xl">📦 Producten Beheer</CardTitle>
+                    <CardDescription>Beheer producten, QR codes en categorieën</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">📦 Nieuw Product Toevoegen</h3>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>Product Naam</Label>
+                              <Input
+                                placeholder="Bijv. Interflon Metal Clean spray 500ml"
+                                value={newProductName}
+                                onChange={(e) => setNewProductName(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Categorie</Label>
+                              <Select value={newProductCategory} onValueChange={setNewProductCategory}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Geen categorie</SelectItem>
+                                  {categories.map((category) => (
+                                    <SelectItem key={category.id} value={category.id}>
+                                      {category.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Label>QR Code (optioneel)</Label>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setQrScanMode("product-management")
+                                    startQrScanner()
+                                  }}
+                                >
+                                  <QrCode className="h-4 w-4 mr-1" />
+                                  Scan
+                                </Button>
+                              </div>
+                              <Input
+                                placeholder="IFLS001"
+                                value={newProductQrCode}
+                                onChange={(e) => setNewProductQrCode(e.target.value)}
+                              />
+                            </div>
+                            <Button onClick={addNewProduct} disabled={isLoading} className="w-full">
+                              {isLoading ? "Bezig..." : "📦 Product Toevoegen"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">📤 Import/Export</h3>
+                          <div className="space-y-3">
+                            <div className="relative">
+                              <input
+                                type="file"
+                                accept=".csv"
+                                onChange={handleImportExcel}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                              <Button className="w-full bg-transparent" variant="outline">
+                                📥 Import CSV
+                              </Button>
+                            </div>
+                            <Button onClick={handleExportExcel} className="w-full bg-transparent" variant="outline">
+                              📤 Export CSV
+                            </Button>
+                            <Button onClick={printAllQRCodes} className="w-full bg-transparent" variant="outline">
+                              🖨️ Print Alle QR Codes
+                            </Button>
+                            <Button onClick={exportQRCodesForLabelPrinter} className="w-full bg-transparent" variant="outline">
+                              🏷️ Export QR Codes
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold">Bestaande Producten</h3>
+                          <Input
+                            placeholder="Zoek producten..."
+                            value={productSearchFilter}
+                            onChange={(e) => setProductSearchFilter(e.target.value)}
+                            className="w-64"
+                          />
+                        </div>
+
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead className="bg-gray-50 border-b">
+                                <tr>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categorie</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">QR Code</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bijlage</th>
+                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acties</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {products
+                                  .filter((product) =>
+                                    product.name.toLowerCase().includes(productSearchFilter.toLowerCase())
+                                  )
+                                  .map((product) => (
+                                    <tr key={product.id} className="hover:bg-gray-50">
+                                      <td className="px-4 py-3 text-sm font-medium">{product.name}</td>
+                                      <td className="px-4 py-3 text-sm">
+                                        {product.categoryId
+                                          ? categories.find((c) => c.id === product.categoryId)?.name || '-'
+                                          : '-'}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm font-mono">
+                                        {product.qrcode || '-'}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm">
+                                        {product.attachmentUrl ? (
+                                          <a
+                                            href={product.attachmentUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:text-blue-800"
+                                          >
+                                            📎 {product.attachmentName}
+                                          </a>
+                                        ) : (
+                                          '-'
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm">
+                                        <div className="flex gap-1 flex-wrap">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleEditProduct(product)}
+                                          >
+                                            ✏️
+                                          </Button>
+                                          {!product.qrcode && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => generateQRCode(product)}
+                                            >
+                                              🏷️
+                                            </Button>
+                                          )}
+                                          {product.qrcode && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => printQRCode(product)}
+                                            >
+                                              🖨️
+                                            </Button>
+                                          )}
+                                          <div className="relative">
+                                            <input
+                                              type="file"
+                                              accept=".pdf"
+                                              onChange={(e) => handleAttachmentUpload(product, e)}
+                                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            />
+                                            <Button size="sm" variant="outline">
+                                              📎
+                                            </Button>
+                                          </div>
+                                          {product.attachmentUrl && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleRemoveAttachment(product)}
+                                              className="text-red-600"
+                                            >
+                                              🗑️
+                                            </Button>
+                                          )}
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                              if (confirm(`Weet je zeker dat je ${product.name} wilt verwijderen?`)) {
+                                                removeProduct(product)
+                                              }
+                                            }}
+                                            className="text-red-600 hover:text-red-700"
+                                          >
+                                            🗑️
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="categories">
+                <Card className="shadow-sm">
+                  <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50 border-b">
+                    <CardTitle className="flex items-center gap-2 text-xl">🗂️ Categorieën Beheer</CardTitle>
+                    <CardDescription>Beheer product categorieën</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-6">
+                      <div className="max-w-md">
+                        <h3 className="text-lg font-semibold mb-4">🗂️ Nieuwe Categorie Toevoegen</h3>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Categorie naam"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button onClick={addNewCategory} disabled={isLoading}>
+                            {isLoading ? "Bezig..." : "Toevoegen"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Bestaande Categorieën</h3>
+                        <div className="border rounded-lg overflow-hidden">
+                          <table className="w-full">
+                            <thead className="bg-gray-50 border-b">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Naam</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producten</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acties</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {categories.map((category) => (
+                                <tr key={category.id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-sm font-medium">{category.name}</td>
+                                  <td className="px-4 py-3 text-sm">
+                                    {products.filter((p) => p.categoryId === category.id).length}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleEditCategory(category)}
+                                      >
+                                        ✏️ Bewerken
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          if (confirm(`Weet je zeker dat je categorie "${category.name}" wilt verwijderen?`)) {
+                                            removeCategory(category)
+                                          }
+                                        }}
+                                        className="text-red-600 hover:text-red-700"
+                                      >
+                                        🗑️ Verwijderen
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="locations">
+                <Card className="shadow-sm">
+                  <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 border-b">
+                    <CardTitle className="flex items-center gap-2 text-xl">📍 Locaties Beheer</CardTitle>
+                    <CardDescription>Beheer beschikbare locaties</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-6">
+                      <div className="max-w-md">
+                        <h3 className="text-lg font-semibold mb-4">📍 Nieuwe Locatie Toevoegen</h3>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Locatie naam"
+                            value={newLocationName}
+                            onChange={(e) => setNewLocationName(e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button onClick={addNewLocation} disabled={isLoading}>
+                            {isLoading ? "Bezig..." : "Toevoegen"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Bestaande Locaties</h3>
+                        <div className="border rounded-lg overflow-hidden">
+                          <table className="w-full">
+                            <thead className="bg-gray-50 border-b">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Naam</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registraties</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acties</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {locations.map((location) => (
+                                <tr key={location} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-sm font-medium">{location}</td>
+                                  <td className="px-4 py-3 text-sm">
+                                    {registrations.filter((r) => r.location === location).length}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleEditLocation(location)}
+                                      >
+                                        ✏️ Bewerken
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          if (confirm(`Weet je zeker dat je locatie "${location}" wilt verwijderen?`)) {
+                                            removeLocation(location)
+                                          }
+                                        }}
+                                        className="text-red-600 hover:text-red-700"
+                                      >
+                                        🗑️ Verwijderen
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="purposes">
+                <Card className="shadow-sm">
+                  <CardHeader className="bg-gradient-to-r from-yellow-50 to-amber-50 border-b">
+                    <CardTitle className="flex items-center gap-2 text-xl">🎯 Doelen Beheer</CardTitle>
+                    <CardDescription>Beheer beschikbare doelen</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-6">
+                      <div className="max-w-md">
+                        <h3 className="text-lg font-semibold mb-4">🎯 Nieuw Doel Toevoegen</h3>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Doel naam"
+                            value={newPurposeName}
+                            onChange={(e) => setNewPurposeName(e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button onClick={addNewPurpose} disabled={isLoading}>
+                            {isLoading ? "Bezig..." : "Toevoegen"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Bestaande Doelen</h3>
+                        <div className="border rounded-lg overflow-hidden">
+                          <table className="w-full">
+                            <thead className="bg-gray-50 border-b">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Naam</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registraties</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acties</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {purposes.map((purpose) => (
+                                <tr key={purpose} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 text-sm font-medium">{purpose}</td>
+                                  <td className="px-4 py-3 text-sm">
+                                    {registrations.filter((r) => r.purpose === purpose).length}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleEditPurpose(purpose)}
+                                      >
+                                        ✏️ Bewerken
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          if (confirm(`Weet je zeker dat je doel "${purpose}" wilt verwijderen?`)) {
+                                            removePurpose(purpose)
+                                          }
+                                        }}
+                                        className="text-red-600 hover:text-red-700"
+                                      >
+                                        🗑️ Verwijderen
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="statistics">
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card>
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Totaal Registraties</p>
+                            <p className="text-2xl font-bold text-gray-900">{registrations.length}</p>
+                          </div>
+                          <div className="text-3xl">📊</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Actieve Gebruikers</p>
+                            <p className="text-2xl font-bold text-gray-900">{users.length}</p>
+                          </div>
+                          <div className="text-3xl">👥</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Totaal Producten</p>
+                            <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+                          </div>
+                          <div className="text-3xl">📦</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Beschikbare Locaties</p>
+                            <p className="text-2xl font-bold text-gray-900">{locations.length}</p>
+                          </div>
+                          <div className="text-3xl">📍</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">🏆 Top Gebruikers</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {getTopUsers().map(([user, count], index) => (
+                            <div key={user} className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-600">#{index + 1}</span>
+                                <span className="text-sm">{user}</span>
+                              </div>
+                              <span className="text-sm font-bold text-blue-600">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">📦 Top Producten</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {getTopProducts().map(([product, count], index) => (
+                            <div key={product} className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-600">#{index + 1}</span>
+                                <span className="text-sm truncate" title={product}>
+                                  {product.length > 20 ? `${product.substring(0, 20)}...` : product}
+                                </span>
+                              </div>
+                              <span className="text-sm font-bold text-green-600">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">📍 Top Locaties</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {getTopLocations().map(([location, count], index) => (
+                            <div key={location} className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-600">#{index + 1}</span>
+                                <span className="text-sm">{location}</span>
+                              </div>
+                              <span className="text-sm font-bold text-purple-600">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </TabsContent>
+            </>
+          )}
+
           {/* QR Scanner Modal */}
           {showQrScanner && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -2455,8 +3337,204 @@ export default function ProductRegistrationApp() {
               </div>
             </div>
           )}
-        </Tabs>
-      </div>
-    </div>
-  )
-}
+
+        {/* Edit User Dialog */}
+        {showEditUserDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Gebruiker Bewerken</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowEditUserDialog(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Naam</Label>
+                  <Input
+                    value={editingUser}
+                    onChange={(e) => setEditingUser(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Rol</Label>
+                  <Select value={editingUserRole} onValueChange={setEditingUserRole}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">Gebruiker</SelectItem>
+                      <SelectItem value="admin">Administrator</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Badge Code</Label>
+                  <Input
+                    value={editingUserBadgeCode}
+                    onChange={(e) => setEditingUserBadgeCode(e.target.value)}
+                    placeholder="BADGE001"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleSaveUser} disabled={isLoading} className="flex-1">
+                    {isLoading ? "Bezig..." : "Opslaan"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowEditUserDialog(false)} className="flex-1">
+                    Annuleren
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Product Dialog */}
+        {showEditDialog && editingProduct && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Product Bewerken</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowEditDialog(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Product Naam</Label>
+                  <Input
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>QR Code</Label>
+                  <Input
+                    value={editingProduct.qrcode || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, qrcode: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Categorie</Label>
+                  <Select 
+                    value={editingProduct.categoryId || 'none'} 
+                    onValueChange={(value) => setEditingProduct({ ...editingProduct, categoryId: value === 'none' ? undefined : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Geen categorie</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleSaveProduct} disabled={isLoading} className="flex-1">
+                    {isLoading ? "Bezig..." : "Opslaan"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowEditDialog(false)} className="flex-1">
+                    Annuleren
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Category Dialog */}
+        {showEditCategoryDialog && editingCategory && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Categorie Bewerken</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowEditCategoryDialog(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Categorie Naam</Label>
+                  <Input
+                    value={editingCategory.name}
+                    onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleSaveCategory} disabled={isLoading} className="flex-1">
+                    {isLoading ? "Bezig..." : "Opslaan"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowEditCategoryDialog(false)} className="flex-1">
+                    Annuleren
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Location Dialog */}
+        {showEditLocationDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Locatie Bewerken</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowEditLocationDialog(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Locatie Naam</Label>
+                  <Input
+                    value={editingLocation}
+                    onChange={(e) => setEditingLocation(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleSaveLocation} disabled={isLoading} className="flex-1">
+                    {isLoading ? "Bezig..." : "Opslaan"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowEditLocationDialog(false)} className="flex-1">
+                    Annuleren
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Purpose Dialog */}
+        {showEditPurposeDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Doel Bewerken</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowEditPurposeDialog(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Doel Naam</Label>
+                  <Input
+                    value={editingPurpose}
+                    onChange={(e) => setEditingPurpose(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleSavePurpose} disabled={isLoading} className="flex-1">
+                    {isLoading ? "Bezig..." : "Opslaan"}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowEditPurposeDialog(false)} className="flex-1">
+                    Annuleren
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}\
