@@ -3537,4 +3537,5 @@ export default function ProductRegistrationApp() {
               </div>
             </div>
           </div>
-        )}
+        )
+        }
